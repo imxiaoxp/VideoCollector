@@ -7,7 +7,7 @@ Typecho插件 - 官方视频采集
 
 兼容：typecho 1.1 - 1.3
 
-要求：php7.2+ 且启用 `cURL` 扩展
+要求：php7+ 且启用 `cURL` 扩展
 
 ## 预览
 
