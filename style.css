@@ -1,0 +1,170 @@
+/* Play视频容器样式 */
+.play-container {
+    margin: 20px 0;
+    overflow: hidden;
+    border-radius: 8px;
+}
+
+/* 视频标题样式 */
+.play-title {
+    padding: 15px 20px;
+    background-color: #f0f0f0;
+    font-size: 18px;
+    font-weight: bold;
+    border-bottom: 1px solid #e0e0e0;
+    color: #333;
+}
+
+/* 暗色模式下的视频标题样式 */
+body.dark .play-title {
+    background-color: #2d2d2d;
+    color: #ffffff;
+    border-bottom: 1px solid #444;
+}
+
+/* Play播放器包装器 */
+.play-player-wrapper {
+    position: relative;
+    width: 100%;
+    background-color: #000;
+    aspect-ratio: 16 / 9;
+    border-radius: 8px;
+}
+
+/* ArtPlayer容器 */
+.artplayer {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+/* ArtPlayer控制栏样式 */
+.artplayer .artplayer-app {
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+/* ArtPlayer底部控制栏 */
+.artplayer .artplayer-info {
+    border-radius: 0 0 8px 8px;
+}
+
+/* ArtPlayer全屏时的样式 */
+.artplayer-fullscreen .artplayer {
+    border-radius: 0;
+}
+
+.artplayer-fullscreen .artplayer .artplayer-app {
+    border-radius: 0;
+    overflow: visible;
+}
+
+.artplayer-fullscreen .artplayer .artplayer-info {
+    border-radius: 0;
+}
+
+/* 修复网页全屏按钮和弹幕的圆角问题 */
+.artplayer .artplayer-setting-item,
+.artplayer .artplayer-fullscreen-web,
+.artplayer .artplayer-fullscreen,
+.artplayer .artplayer-danmuku,
+.artplayer .artplayer-danmuku-item {
+    border-radius: 0 !important;
+}
+
+/* 确保只有主要容器有圆角，子元素保持默认样式 */
+.artplayer .artplayer-video,
+.artplayer .artplayer-cover {
+    border-radius: inherit;
+}
+
+.artplayer-iframe {
+    width: 100%;
+    height: 100%;
+    border: none;
+    border-radius: 8px;
+}
+
+/* 视频切换标签样式 */
+.video-tabs {
+    display: flex;
+    flex-wrap: wrap;
+    padding: 10px 20px;
+}
+
+.video-tab {
+    padding: 8px 16px;
+    margin: 5px;
+    min-width: 90px;
+    text-align: center;
+    background-color: #fff;
+    border: 1px solid #ddd;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 14px;
+    color: #666;
+    transition: all 0.3s ease;
+}
+
+.video-tab:hover {
+    background-color: #f0f0f0;
+    color: #333;
+}
+
+.video-tab.active {
+    background-color: #3498db;
+    color: white;
+    border-color: #2980b9;
+}
+
+body.dark .video-tab {
+    background-color: #222;
+    border: 1px solid #222;
+    color: #666;
+}
+
+body.dark .video-tab:hover {
+    background-color: #424242;
+    color: #9f9f9f;
+}
+
+body.dark .video-tab.active {
+    background-color: #233e50;
+    color: #9f9f9f;
+}
+
+/* 手机端：321px - 479px  满足最小宽度时固定3列 */
+@media screen and (min-width: 321px) and (max-width: 479px) {
+    .video-tab {
+        min-width: 88px;
+    }
+}
+
+/* 小屏手机：≤320px  强制固定最小宽度并居中 */
+@media screen and (max-width: 320px) {
+    .video-tab {
+        min-width: 100px;
+    }
+}
+
+/* 平板端：480px - 767px  满足最小宽度时固定6列 */
+@media screen and (min-width: 480px) and (max-width: 767px) {
+    .video-tab {
+        min-width: 85px;
+    }
+}
+
+/* 下一集按钮样式 */
+.artplayer .artplayer-icon-next {
+    cursor: pointer;
+    transition: transform 0.2s ease;
+    display: inline-block;
+}
+
+.artplayer .artplayer-icon-next:active {
+    transform: scale(0.85) !important;
+}
