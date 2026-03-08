@@ -1,5 +1,5 @@
 # VideoCollector
-Typecho - 官方视频采集插件
+Typecho插件 - 官方视频采集
 
 ## 插件名称：VideoCollector
 
