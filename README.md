@@ -3,7 +3,7 @@ Typecho插件 - 官方视频采集
 
 ## 插件名称：VideoCollector
 
-版本：1.0.3
+版本：1.0.4
 
 兼容：typecho 1.1 - 1.3
 
