@@ -159,6 +159,30 @@ function switchVideo(container, index) {
             switchPlayVideo(container, index, urls, parserUrl, useParser);
         }
     }
+    
+    // 更新浏览器标签标题
+    updateBrowserTitle(index, titles, container);
+}
+
+/**
+ * 更新浏览器标签标题
+ * @param {number} index 视频索引
+ * @param {Array} titles 视频标题列表
+ * @param {HTMLElement} container 视频容器元素
+ */
+function updateBrowserTitle(index, titles, container) {
+    // 获取当前分集的标题
+    var currentTitle = titles[index] ? titles[index].trim() : ('第' + (index + 1) + '集');
+    
+    // 获取页面原始标题（如果没有保存过，则从document.title获取）
+    var originalTitle = container.originalTitle || document.title;
+    container.originalTitle = originalTitle;
+    
+    // 构建新标题：分集标题 + 原始页面标题
+    var newTitle = currentTitle + ' - ' + originalTitle;
+    
+    // 更新浏览器标题
+    document.title = newTitle;
 }
 
 /**
@@ -359,7 +383,6 @@ function initializeArtPlayer(container) {
                     fastForward: true, // 移动端添加长按视频快进功能
                     setting: true, // 显示设置菜单
                     pip: !isMobile, // 画中画：移动端不显示
-                    aspectRatio: true, // 允许调整视频宽高比
                     fullscreen: true, // 启用视频全屏功能
                     fullscreenWeb: !isMobile, // 网页全屏：移动端不显示
                     playsInline: true, // 允许网页内播放（移动端）
