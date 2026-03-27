@@ -91,34 +91,39 @@ body.dark .play-title {
 
 /* 视频切换标签样式 */
 .video-tabs {
-    display: flex;
-    flex-wrap: wrap;
-    padding: 10px 20px;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(90px, 1fr));
+    justify-content: center;
+    gap: 8px;
+    padding: 12px 15px;
 }
 
 .video-tab {
-    padding: 8px 16px;
-    margin: 5px;
-    min-width: 90px;
+    padding: 10px 12px;
+    min-width: 80px;
     text-align: center;
-    background-color: #fff;
-    border: 1px solid #ddd;
-    border-radius: 5px;
+    background-color: #eeeeee;
+    border: 1px solid #eeeeee;
+    border-radius: 6px;
     cursor: pointer;
-    font-size: 14px;
-    color: #666;
-    transition: all 0.3s ease;
+    font-size: 13px;
+    color: #555555;
+    transition: all 0.2s ease;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
 }
 
 .video-tab:hover {
-    background-color: #f0f0f0;
-    color: #333;
+    background-color: #f5f5f5;
+    color: #333333;
+    border-color: #f5f5f5;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+    transform: translateY(-1px);
 }
 
 .video-tab.active {
     background-color: #3498db;
-    color: white;
-    border-color: #2980b9;
+    color: #ffffff;
+    border-color: #3498db;
 }
 
 body.dark .video-tab {
