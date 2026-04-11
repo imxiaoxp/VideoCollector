@@ -19,7 +19,7 @@ Typecho插件 - 官方视频采集
 
 ## 演示
 
-https://ma.us.ci
+https://cat.ee.cd
 
 ## 功能
 
