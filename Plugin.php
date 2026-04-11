@@ -20,7 +20,7 @@ if (!defined('__TYPECHO_ROOT_DIR__')) {
  * @package 官方视频采集
  * @author xiao
  * @version 1.0.4
- * @link https://ma.us.ci
+ * @link https://cat.ee.cd
  */
 class Plugin implements PluginInterface
 {
