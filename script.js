@@ -253,7 +253,14 @@ function switchPlayVideo(container, index, urls, parserUrl, useParser) {
     // 获取解析后的视频URL
     getParsedVideoUrlAsync(videoUrl, parserUrl, useParser)
         .then(function(finalUrl) {
-            var videoType = getVideoType(finalUrl);
+            // 使用异步方法智能检测视频类型（通过HEAD请求获取Content-Type）
+            return getVideoTypeAsync(finalUrl).then(function(videoType) {
+                return { url: finalUrl, type: videoType };
+            });
+        })
+        .then(function(result) {
+            var finalUrl = result.url;
+            var videoType = result.type;
             
             // 切换视频
             artPlayer.switchUrl(finalUrl, videoType);
@@ -337,7 +344,14 @@ function initializeArtPlayer(container) {
     // 获取第一个视频URL
     getParsedVideoUrlAsync(videoUrls[0], parserUrl, useParser)
         .then(function(firstVideoUrl) {
-            var videoType = getVideoType(firstVideoUrl);
+            // 使用异步方法智能检测视频类型（通过HEAD请求获取Content-Type）
+            return getVideoTypeAsync(firstVideoUrl).then(function(videoType) {
+                return { url: firstVideoUrl, type: videoType };
+            });
+        })
+        .then(function(result) {
+            var firstVideoUrl = result.url;
+            var videoType = result.type;
             
             // 检测是否为移动端设备
             var isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
@@ -392,37 +406,48 @@ function initializeArtPlayer(container) {
                     mutex: true, // 互斥，阻止多个播放器同时播放
                     controls: controlsConfig,
                     customType: {
-                        m3u8: function (video, url) {
-                            if (window.Hls && window.Hls.isSupported()) {
+                        m3u8: function (video, url, art) {
+                            if (window.Hls && Hls.isSupported()) {
                                 var hls = new Hls({
-                                    maxBufferLength: 300,       // 正常缓冲时长 (秒)
-                                    maxMaxBufferLength: 600,    // 最大缓冲时长 (秒)
-                                    fragLoadingSetup: function(xhr, frag) {
-                                        // 为伪装成PNG的TS片段添加正确的请求头
-                                        if (frag.url && frag.url.toLowerCase().endsWith('.png')) {
-                                            xhr.setRequestHeader('Accept', '*/*');
-                                            xhr.setRequestHeader('Content-Type', 'video/mp2t');
-                                        }
-                                    }
+                                    maxBufferLength: 300,
+                                    maxMaxBufferLength: 600,
                                 });
                                 hls.loadSource(url);
                                 hls.attachMedia(video);
+                                art.hls = hls;
                             } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
                                 video.src = url;
+                            } else {
+                                console.error('当前浏览器不支持 HLS 播放');
                             }
                         },
-                        flv: function (video, url) {
-                            if (window.flvjs && window.flvjs.isSupported()) {
+                        flv: function (video, url, art) {
+                            if (window.flvjs && flvjs.isSupported()) {
                                 var flvPlayer = flvjs.createPlayer({
                                     type: 'flv',
-                                    url: url
+                                    url: url,
+                                    isLive: false,
+                                    enableWorker: true,
                                 });
                                 flvPlayer.attachMediaElement(video);
                                 flvPlayer.load();
+                                art.flvPlayer = flvPlayer;
+                            } else {
+                                console.error('当前浏览器不支持 FLV 播放');
                             }
                         },
                         mp4: function (video, url) {
                             video.src = url;
+                        }
+                    },
+                    destroy: function () {
+                        if (this.hls) {
+                            this.hls.destroy();
+                            delete this.hls;
+                        }
+                        if (this.flvPlayer) {
+                            this.flvPlayer.destroy();
+                            delete this.flvPlayer;
                         }
                     },
                     plugins: plugins,
@@ -467,6 +492,54 @@ async function getParsedVideoUrlAsync(originalUrl, parserUrl, useParser) {
     }
     // 直接使用原始地址
     return originalUrl;
+}
+
+/**
+ * 智能类型识别：基于 Content-Type 和 URL 后缀
+ * @param {string} finalUrl - 视频URL
+ * @param {string|null} contentType - Content-Type 响应头
+ * @returns {string} 视频类型（m3u8、flv、mp4）
+ */
+function detectVideoTypeByResponse(finalUrl, contentType) {
+    if (contentType) {
+        const lowerCT = contentType.toLowerCase();
+        if (lowerCT.includes('application/vnd.apple.mpegurl') ||
+            lowerCT.includes('application/x-mpegurl') ||
+            lowerCT.includes('application/mpegurl')) {
+            return 'm3u8';
+        }
+        if (lowerCT.includes('video/x-flv') || lowerCT.includes('flv')) {
+            return 'flv';
+        }
+        if (lowerCT.includes('video/mp4') || lowerCT.includes('video/mpeg')) {
+            return 'mp4';
+        }
+    }
+    const urlLower = finalUrl.toLowerCase();
+    if (urlLower.includes('.m3u8') || urlLower.includes('hls') || urlLower.includes('playlist')) {
+        return 'm3u8';
+    }
+    if (urlLower.endsWith('.flv')) {
+        return 'flv';
+    }
+    return 'mp4';
+}
+
+/**
+ * 获取视频类型（异步版本，带Content-Type检测）
+ * @param {string} url - 视频URL
+ * @returns {Promise<string>} 视频类型（m3u8、flv、mp4）
+ */
+async function getVideoTypeAsync(url) {
+    try {
+        const response = await fetch(url, { method: 'HEAD', redirect: 'follow' });
+        const contentType = response.headers.get('content-type');
+        const finalUrl = response.url;
+        return detectVideoTypeByResponse(finalUrl, contentType);
+    } catch (error) {
+        console.warn('HEAD请求获取Content-Type失败，使用URL后缀检测:', error);
+        return getVideoType(url);
+    }
 }
 
 /**
