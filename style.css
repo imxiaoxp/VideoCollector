@@ -16,7 +16,7 @@
 }
 
 /* 暗色模式下的视频标题样式 */
-body.dark .play-title {
+[data-theme="dark"] .play-title {
     background-color: #2d2d2d;
     color: #ffffff;
     border-bottom: 1px solid #444;
@@ -126,18 +126,18 @@ body.dark .play-title {
     border-color: #3498db;
 }
 
-body.dark .video-tab {
+[data-theme="dark"] .video-tab {
     background-color: #222;
     border: 1px solid #222;
     color: #666;
 }
 
-body.dark .video-tab:hover {
+[data-theme="dark"] .video-tab:hover {
     background-color: #424242;
     color: #9f9f9f;
 }
 
-body.dark .video-tab.active {
+[data-theme="dark"] .video-tab.active {
     background-color: #233e50;
     color: #9f9f9f;
 }
@@ -172,4 +172,24 @@ body.dark .video-tab.active {
 
 .artplayer .artplayer-icon-next:active {
     transform: scale(0.85) !important;
+}
+
+/* NProgress 自定义样式 */
+#nprogress .bar {
+    background: #3498db;
+    position: fixed;
+    z-index: 99999;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 3px;
+}
+
+#nprogress .peg {
+    box-shadow: 0 0 10px #3498db, 0 0 5px #3498db;
+}
+
+#nprogress .spinner-icon {
+    border-top-color: #3498db;
+    border-left-color: #3498db;
 }
