@@ -102,11 +102,19 @@ function initVideoContainer(container) {
  * @param {number} index 视频索引
  */
 function switchVideo(container, index) {
+    // 启动NProgress加载动画
+    if (typeof NProgress !== 'undefined') {
+        NProgress.start();
+    }
+    
     // 获取视频URL列表
     var urlsInput = container.querySelector('.video-urls');
     var titlesInput = container.querySelector('.video-titles');
     
     if (!urlsInput || !titlesInput) {
+        if (typeof NProgress !== 'undefined') {
+            NProgress.done();
+        }
         return;
     }
     
@@ -123,6 +131,9 @@ function switchVideo(container, index) {
     
     // 验证索引是否有效
     if (index < 0 || index >= urls.length) {
+        if (typeof NProgress !== 'undefined') {
+            NProgress.done();
+        }
         return;
     }
     
@@ -198,6 +209,9 @@ function switchIframeVideo(container, index, urls, parserUrl, useParser) {
     var videoUrl = urls[index];
     
     if (!iframeElement || !videoUrl) {
+        if (typeof NProgress !== 'undefined') {
+            NProgress.done();
+        }
         return;
     }
     
@@ -210,6 +224,13 @@ function switchIframeVideo(container, index, urls, parserUrl, useParser) {
         // 直接使用原始地址
         finalUrl = videoUrl;
     }
+    
+    // 监听iframe加载完成事件
+    iframeElement.onload = function() {
+        if (typeof NProgress !== 'undefined') {
+            NProgress.done();
+        }
+    };
     
     // 更新iframe的src属性
     iframeElement.src = finalUrl;
@@ -247,6 +268,9 @@ function switchPlayVideo(container, index, urls, parserUrl, useParser) {
     var videoUrl = urls[index];
     
     if (!artPlayer || !videoUrl) {
+        if (typeof NProgress !== 'undefined') {
+            NProgress.done();
+        }
         return;
     }
     
@@ -265,6 +289,11 @@ function switchPlayVideo(container, index, urls, parserUrl, useParser) {
             // 切换视频
             artPlayer.switchUrl(finalUrl, videoType);
             artPlayer.play();
+            
+            // 完成NProgress加载动画
+            if (typeof NProgress !== 'undefined') {
+                NProgress.done();
+            }
             
             // 禁用弹幕功能，移除加载弹幕数据的逻辑
             
@@ -294,6 +323,9 @@ function switchPlayVideo(container, index, urls, parserUrl, useParser) {
         })
         .catch(function(error) {
             console.error('Error getting parsed video URL:', error);
+            if (typeof NProgress !== 'undefined') {
+                NProgress.done();
+            }
         });
 }
 
