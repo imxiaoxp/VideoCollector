@@ -35,7 +35,7 @@ https://ma.us.ci
 
 支持PJAX主题，（在PJAX加载完成后调用 `initVideoCollectors();` 即可）；
 
-插件CSS包含暗色模式，可搭配暗色主题使用，元素标签类名： `body.dark` 。
+插件CSS包含暗色模式，可搭配暗色主题使用，CSS 属性选择器： `[data-theme="dark"]` 。
 
 ## 使用方法
 
