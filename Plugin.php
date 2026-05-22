@@ -19,8 +19,8 @@ if (!defined('__TYPECHO_ROOT_DIR__')) {
  *
  * @package 官方视频采集
  * @author xiao
- * @version 1.0.4
- * @link https://cat.ee.cd
+ * @version 1.0.5
+ * @link https://ma.us.ci
  */
 class Plugin implements PluginInterface
 {
@@ -257,6 +257,19 @@ class Plugin implements PluginInterface
         echo '<script type="text/javascript" src="https://registry.npmmirror.com/hls.js/latest/files/dist/hls.min.js"></script>';
         echo '<script type="text/javascript" src="https://registry.npmmirror.com/flv.js/latest/files/dist/flv.min.js"></script>';
         
+        // 输出NProgress库 - 如果主题已自带NProgress则不重复引用
+        echo '<script type="text/javascript">';
+        echo '(function(){if(typeof NProgress==="undefined"){';
+        echo 'var npCss=document.createElement("link");';
+        echo 'npCss.rel="stylesheet";';
+        echo 'npCss.href="https://registry.npmmirror.com/nprogress/latest/files/nprogress.css";';
+        echo 'document.head.appendChild(npCss);';
+        echo 'var npJs=document.createElement("script");';
+        echo 'npJs.src="https://registry.npmmirror.com/nprogress/latest/files/nprogress.js";';
+        echo 'document.head.appendChild(npJs);';
+        echo '}})();';
+        echo '</script>';
+        
         // 输出播放器初始化脚本
         echo '<script type="text/javascript" src="' . $jsUrl . '"></script>';
     }
@@ -271,7 +284,7 @@ class Plugin implements PluginInterface
         $apiUrl = new Text(
             'apiUrl',
             null,
-            'https://www.caiji.cyou/api.php/provide/vod/?ac=detail&wd=',
+            'https://zy.xiaomaomi.cc/api.php/provide/vod/?ac=detail&wd=',
             _t('采集API地址'),
             _t('视频采集的API地址，wd=后面会自动追加搜索关键词')
         );
@@ -293,9 +306,9 @@ class Plugin implements PluginInterface
         $videoParserUrl = new Text(
             'videoParserUrl',
             null,
-            '',
-            _t('视频解析地址'),
-            _t('请输入视频解析地址前缀（可选），例如：v.php?url=')
+            'https://api.qljson.xyz/api/?key=c9fcbfea4cb5833424f09720da4d2907&url=',
+            _t('Json解析地址'),
+            _t('请输入视频解析地址前缀（可选），例如：json.php?url=')
         );
         $form->addInput($videoParserUrl);
         
@@ -303,7 +316,7 @@ class Plugin implements PluginInterface
         $iframeParserUrl = new Text(
             'iframeParserUrl',
             null,
-            'https://jiexi.789jiexi.com/?url=',
+            'https://json.fongmi.cc/web?url=',
             _t('Iframe解析地址'),
             _t('请输入Iframe解析地址前缀（可选），例如：iframe.php?url=')
         );
