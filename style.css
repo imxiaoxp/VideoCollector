@@ -12,6 +12,7 @@
     font-size: 18px;
     font-weight: bold;
     border-bottom: 1px solid #e0e0e0;
+    border-radius: 8px;
     color: #333;
 }
 
@@ -110,6 +111,37 @@
     color: #555555;
     transition: all 0.2s ease;
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+    /* 标题超出按钮宽度时直接裁剪隐藏，禁止换行，保持按钮高度统一 */
+    white-space: nowrap;
+    overflow: hidden;
+}
+
+/* 分集标题内层元素：悬停滚动动画的作用目标 */
+.video-tab-text {
+    display: inline-block;
+    white-space: nowrap;
+}
+
+/* 标题溢出且鼠标悬停时：改为左对齐滚动展示完整标题 */
+.video-tab.is-scrolling {
+    text-align: left;
+}
+
+.video-tab.is-scrolling .video-tab-text {
+    animation: videoTabScroll var(--tab-scroll-duration, 6s) linear infinite;
+}
+
+/* 停留 -> 滚动到末尾停留 -> 滚回开头，循环往复 */
+@keyframes videoTabScroll {
+    0%, 15% {
+        transform: translateX(0);
+    }
+    55%, 75% {
+        transform: translateX(var(--tab-scroll-x, 0px));
+    }
+    100% {
+        transform: translateX(0);
+    }
 }
 
 .video-tab:hover {
@@ -172,6 +204,11 @@
 
 .artplayer .artplayer-icon-next:active {
     transform: scale(0.85) !important;
+}
+
+/* 播放器宽度小于438px时隐藏数字时间（当前时间/总时长） */
+.artplayer .vc-hide-time .art-control-time {
+    display: none !important;
 }
 
 /* NProgress 自定义样式 */
