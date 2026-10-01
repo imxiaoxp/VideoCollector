@@ -11,95 +11,131 @@ if (!defined('__TYPECHO_ROOT_DIR__')) {
 }
 
 /**
- * 视频采集Action
+ * 视频采集Action：代理搜索第三方采集API（需登录）
  */
 class Action extends Widget implements ActionInterface
 {
-    /**
-     * 执行函数
-     */
     public function execute()
     {
     }
 
-    /**
-     * 搜索视频
-     */
-    public function search()
+    public function action()
     {
+        if ($this->request->get('do', '') === 'search') {
+            $this->search();
+        }
         $this->response->setContentType('application/json');
-        
-        // 检查用户是否登录
-        $user = \Widget\User::alloc();
-        if (!$user->hasLogin()) {
-            echo json_encode(['code' => 0, 'msg' => '请先登录']);
-            exit;
-        }
-        
-        $keyword = $this->request->get('keyword', '');
-        if (empty($keyword)) {
-            echo json_encode(['code' => 0, 'msg' => '请输入搜索关键词']);
-            exit;
-        }
-        
-        $options = Options::alloc();
-        $apiUrl = $options->plugin('VideoCollector')->apiUrl;
-        
-        if (empty($apiUrl)) {
-            $apiUrl = 'https://www.caiji.cyou/api.php/provide/vod/?ac=detail&wd=';
-        }
-        
-        $url = $apiUrl . urlencode($keyword);
-        
-        $result = $this->fetchUrl($url);
-        
-        if ($result === false) {
-            echo json_encode(['code' => 0, 'msg' => '请求API失败']);
-            exit;
-        }
-        
-        $data = json_decode($result, true);
-        
-        if (!$data) {
-            echo json_encode(['code' => 0, 'msg' => '解析JSON失败']);
-            exit;
-        }
-        
-        echo json_encode($data);
+        echo json_encode(['code' => 0, 'msg' => '未知操作']);
+        exit;
+    }
+
+    private function fail(string $msg)
+    {
+        echo json_encode(['code' => 0, 'msg' => $msg]);
         exit;
     }
 
     /**
-     * 请求URL
+     * 搜索视频（支持分页）
+     */
+    public function search()
+    {
+        $this->response->setContentType('application/json');
+
+        if (!\Widget\User::alloc()->hasLogin()) {
+            $this->fail('请先登录');
+        }
+
+        $keyword = $this->request->get('keyword', '');
+        if (empty($keyword)) {
+            $this->fail('请输入搜索关键词');
+        }
+
+        $page = max(1, intval($this->request->get('page', 1)));
+
+        $apiUrl = Options::alloc()->plugin('VideoCollector')->apiUrl;
+        if (empty($apiUrl)) {
+            $this->fail('请先在插件配置中填写采集API地址');
+        }
+
+        $result = $this->fetchUrl($this->buildApiUrl($apiUrl, $keyword, $page));
+        if ($result === false) {
+            $this->fail('请求API失败');
+        }
+
+        $data = json_decode($result, true);
+        if (!$data) {
+            $this->fail('解析JSON失败');
+        }
+
+        // 兼容多种字段名；API 未返回当前页时使用请求的页码
+        echo json_encode([
+            'code' => 1,
+            'list' => $data['list'] ?? [],
+            'page' => $data['pg'] ?? $data['page'] ?? $page,
+            'pagecount' => $data['pagecount'] ?? $data['totalpages'] ?? 1,
+            'total' => $data['total'] ?? 0
+        ]);
+        exit;
+    }
+
+    private function appendParam(string $url, string $param): string
+    {
+        return $url . (strpos($url, '?') !== false ? '&' : '?') . $param;
+    }
+
+    /**
+     * 构建完整的API请求URL：统一 ac=detail，注入 wd（关键词）与 pg（页码）参数
+     */
+    private function buildApiUrl(string $apiUrl, string $keyword, int $page = 1): string
+    {
+        $wd = urlencode($keyword);
+
+        $apiUrl = preg_replace('/([?&])ac=list/i', '$1ac=detail', $apiUrl);
+        if (strpos($apiUrl, 'ac=') === false) {
+            $apiUrl = $this->appendParam($apiUrl, 'ac=detail');
+        }
+
+        if (strpos($apiUrl, 'wd=') !== false) {
+            $apiUrl = preg_replace('/(wd=)([^&]*)/i', '$1' . $wd, $apiUrl);
+        } else {
+            $apiUrl = $this->appendParam($apiUrl, 'wd=' . $wd);
+        }
+
+        if (preg_match('/[?&]pg=/i', $apiUrl)) {
+            $apiUrl = preg_replace('/([?&]pg=)(\d+)/i', '$1' . $page, $apiUrl);
+        } else {
+            $apiUrl = $this->appendParam($apiUrl, 'pg=' . $page);
+        }
+
+        return $apiUrl;
+    }
+
+    /**
+     * 请求URL（cURL 优先，退化为 file_get_contents）
      *
      * @param string $url
      * @return string|false
      */
     private function fetchUrl($url)
     {
-        // 优先使用curl
         if (function_exists('curl_init')) {
             $ch = curl_init();
-            curl_setopt($ch, CURLOPT_URL, $url);
-            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-            curl_setopt($ch, CURLOPT_TIMEOUT, 30);
-            curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
-            curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, false);
-            curl_setopt($ch, CURLOPT_USERAGENT, 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36');
-            curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
-            
+            curl_setopt_array($ch, [
+                CURLOPT_URL => $url,
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_TIMEOUT => 30,
+                CURLOPT_SSL_VERIFYPEER => false,
+                CURLOPT_SSL_VERIFYHOST => false,
+                CURLOPT_USERAGENT => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                CURLOPT_FOLLOWLOCATION => true,
+            ]);
             $result = curl_exec($ch);
             $error = curl_error($ch);
             curl_close($ch);
-            
-            if ($error) {
-                return false;
-            }
-            
-            return $result;
+            return $error ? false : $result;
         }
-        
-        // 使用file_get_contents
+
         $context = stream_context_create([
             'http' => [
                 'timeout' => 30,
@@ -110,25 +146,6 @@ class Action extends Widget implements ActionInterface
                 'verify_peer_name' => false
             ]
         ]);
-        
         return @file_get_contents($url, false, $context);
-    }
-
-    /**
-     * Action入口
-     */
-    public function action()
-    {
-        $do = $this->request->get('do', '');
-        
-        switch ($do) {
-            case 'search':
-                $this->search();
-                break;
-            default:
-                $this->response->setContentType('application/json');
-                echo json_encode(['code' => 0, 'msg' => '未知操作']);
-                exit;
-        }
     }
 }
