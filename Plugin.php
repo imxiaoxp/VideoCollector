@@ -15,7 +15,7 @@ if (!defined('__TYPECHO_ROOT_DIR__')) {
 /**
  * 视频采集 - 从JSON API采集视频并插入编辑器
  *
- * @package 官方视频采集
+ * @package 视频采集
  * @author xiao
  * @version 1.0.10
  * @link https://ma.us.ci
