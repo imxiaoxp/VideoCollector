@@ -1,628 +1,553 @@
-// VideoCollector 插件 JavaScript 代码
+// VideoCollector 前端脚本
+// 主题约定：PJAX 加载完成后调用 initVideoCollectors()
 
-// 页面加载完成后执行
+// 活动播放器注册表：PJAX 切换前统一销毁，防止旧实例及 hls/flv 解码器泄漏
+var vcActivePlayers = [];
+var vcJqueryPjaxBound = false;
+var vcNativePjaxBound = false;
+
 document.addEventListener('DOMContentLoaded', function() {
-    // 初始化视频切换功能
+    bindVideoCollectorPjax(); // 主题的 jQuery 可能晚于本脚本加载，这里补绑
     initVideoTabs();
-    // 初始化Play播放器
     initPlayPlayers();
 });
 
-// PJAX重载功能 （在PJAX加载完成后调用initVideoCollectors();）
+// PJAX 完成后由主题回调（瀑布流追加时也可调用）
 function initVideoCollectors() {
-    // 初始化视频切换功能
     initVideoTabs();
-    // 初始化Play播放器
     initPlayPlayers();
 }
 
-/**
- * 初始化视频切换功能
- */
-function initVideoTabs() {
-    // 获取所有视频容器，只处理play-container
-    var videoContainers = document.querySelectorAll('.play-container');
-    
-    // 使用传统的for循环替代forEach，确保兼容性
-    for (var i = 0; i < videoContainers.length; i++) {
-        var container = videoContainers[i];
-        // 为每个视频容器初始化切换功能
-        initVideoContainer(container);
-    }
-}
-
-/**
- * 初始化所有Play播放器
- */
-function initPlayPlayers() {
-    // 获取所有Play播放器容器
-    var playContainers = document.querySelectorAll('.play-container');
-    
-    // 使用传统的for循环，确保兼容性
-    for (var i = 0; i < playContainers.length; i++) {
-        var container = playContainers[i];
-        // 检查是否使用iframe方式
-        var iframeElement = container.querySelector('.artplayer-iframe');
-        if (!iframeElement) {
-            // 只在非iframe方式下初始化ArtPlayer播放器
-            initializeArtPlayer(container);
+function registerVideoCollectorPlayer(container, art) {
+    vcActivePlayers.push({ container: container, art: art });
+    art.on('destroy', function() {
+        for (var i = 0; i < vcActivePlayers.length; i++) {
+            if (vcActivePlayers[i].art === art) {
+                vcActivePlayers.splice(i, 1);
+                break;
+            }
         }
+    });
+}
+
+function destroyAllVideoCollectors() {
+    for (var i = vcActivePlayers.length - 1; i >= 0; i--) {
+        var item = vcActivePlayers[i];
+        try { destroyArtPlayerMediaInstances(item.art); } catch (e) {}
+        try { item.art.destroy(true); } catch (e) {}
+        try { item.container.artPlayer = null; } catch (e) {}
+    }
+    vcActivePlayers.length = 0;
+}
+
+// 仅当 PJAX 替换区域包含播放器时才销毁；评论区的局部刷新不应打断正在播放的视频
+function vcPjaxSwapsPlayers(options) {
+    if (!options || !options.container || !window.jQuery) {
+        return true;
+    }
+    try {
+        return window.jQuery(options.container).find('.play-container').length > 0;
+    } catch (e) {
+        return true;
     }
 }
 
-/**
- * 解码URL编码的字符串
- * @param {string} str 编码的字符串
- * @returns {string} 解码后的字符串
- */
-function decodeURIComponent(str) {
-    // 创建一个临时textarea元素来解码HTML实体
+function vcInitAfterPjax() {
+    // 延迟到同批事件处理器执行完再初始化，避免与主题自身的 DOM 调整竞争
+    setTimeout(initVideoCollectors, 0);
+}
+
+function bindVideoCollectorPjax() {
+    // jquery-pjax：beforeReplace 时旧播放器仍在 DOM，是销毁的最佳时机
+    if (window.jQuery && !vcJqueryPjaxBound) {
+        vcJqueryPjaxBound = true;
+        window.jQuery(document).on('pjax:beforeReplace', function(e, xhr, options) {
+            if (vcPjaxSwapsPlayers(options)) {
+                destroyAllVideoCollectors();
+            }
+        });
+        window.jQuery(document).on('pjax:complete', vcInitAfterPjax);
+    }
+    // 原生事件（MoOx/pjax 等通过 document.dispatchEvent 派发的库）
+    if (!vcNativePjaxBound) {
+        vcNativePjaxBound = true;
+        document.addEventListener('pjax:before-swap', destroyAllVideoCollectors);
+        document.addEventListener('pjax:send', destroyAllVideoCollectors);
+        document.addEventListener('pjax:complete', vcInitAfterPjax);
+    }
+}
+bindVideoCollectorPjax();
+
+function vcNProgress(method) {
+    if (typeof NProgress !== 'undefined') {
+        NProgress[method]();
+    }
+}
+
+function vcSafeCall(obj, method) {
+    try {
+        if (obj && obj[method]) {
+            obj[method]();
+        }
+    } catch (e) { /* ignore */ }
+}
+
+function initVideoTabs() {
+    document.querySelectorAll('.play-container').forEach(initVideoContainer);
+}
+
+function initPlayPlayers() {
+    document.querySelectorAll('.play-container').forEach(function(container) {
+        if (!container.querySelector('.artplayer-iframe')) {
+            // 全局懒加载：进入视口才初始化，避免一页多个播放器同时拉流缓冲
+            lazyInitArtPlayer(container);
+        }
+    });
+}
+
+var vcLazyObserver = null;
+
+function lazyInitArtPlayer(container) {
+    if (container.dataset.videoLazyBound === 'true') {
+        return;
+    }
+    container.dataset.videoLazyBound = 'true';
+
+    if (!('IntersectionObserver' in window)) {
+        initializeArtPlayer(container);
+        return;
+    }
+
+    if (!vcLazyObserver) {
+        vcLazyObserver = new IntersectionObserver(function (entries) {
+            entries.forEach(function(entry) {
+                if (entry.isIntersecting) {
+                    vcLazyObserver.unobserve(entry.target);
+                    initializeArtPlayer(entry.target);
+                }
+            });
+        }, { rootMargin: '200px' });
+    }
+    vcLazyObserver.observe(container);
+}
+
+// 绝不能命名为 decodeURIComponent——会覆盖原生全局函数，影响页面所有脚本的解码路径
+function decodeHtmlEntities(str) {
     var textarea = document.createElement('textarea');
     textarea.innerHTML = str;
     return textarea.value;
 }
 
-/**
- * 初始化单个视频容器
- * @param {HTMLElement} container 视频容器元素
- */
+// 分集数据用 \n 分隔（PHP 端 implode("\n")），避免误拆 URL 中的逗号
+function parseVideoList(input) {
+    return input
+        ? decodeHtmlEntities(input.value).split('\n').map(function(s) { return s.trim(); }).filter(function(s) { return s !== ''; })
+        : [];
+}
+
 function initVideoContainer(container) {
-    // 检查是否已经初始化过，避免重复初始化
     if (container.dataset.videoInitialized === 'true') {
         return;
     }
-    
-    // 标记为已初始化
     container.dataset.videoInitialized = 'true';
-    
-    // 获取视频切换标签
+
     var tabs = container.querySelectorAll('.video-tab');
-    
-    // 如果没有标签，不需要初始化
-    if (tabs.length === 0) {
-        return;
-    }
-    
-    // 为每个标签绑定点击事件
-    for (var i = 0; i < tabs.length; i++) {
-        (function(index) {
-            var tab = tabs[index];
-            tab.addEventListener('click', function(e) {
-                e.preventDefault();
-                // 切换视频
-                switchVideo(container, index);
-            });
-        })(i);
-    }
+    tabs.forEach(function(tab, index) {
+        tab.addEventListener('click', function(e) {
+            e.preventDefault();
+            switchVideo(container, index);
+        });
+        // 标题溢出时，悬停滚动显示完整标题
+        setupTabTitleScroll(tab);
+    });
 }
 
 /**
- * 切换视频
- * @param {HTMLElement} container 视频容器元素
- * @param {number} index 视频索引
+ * 分集标题超出按钮宽度时，鼠标悬停滚动显示完整标题
+ * 依赖 PHP 端生成的 .video-tab-text 内层元素作为滚动目标
+ * @param {HTMLElement} tab 分集按钮元素
  */
+function setupTabTitleScroll(tab) {
+    var textEl = tab.querySelector('.video-tab-text');
+    if (!textEl) {
+        return;
+    }
+
+    // 触屏设备没有悬停概念，不绑定（避免点按后动画残留）
+    if (window.matchMedia && !window.matchMedia('(hover: hover)').matches) {
+        return;
+    }
+
+    tab.addEventListener('mouseenter', function() {
+        // 计算按钮内容区可用宽度与标题实际宽度
+        var style = window.getComputedStyle(tab);
+        var available = tab.clientWidth
+            - parseFloat(style.paddingLeft)
+            - parseFloat(style.paddingRight);
+        var overflow = textEl.getBoundingClientRect().width - available;
+
+        // 未溢出（或差距在2像素以内）时不滚动，保持居中省略号样式
+        if (overflow <= 2) {
+            tab.classList.remove('is-scrolling');
+            return;
+        }
+
+        // 设置滚动距离与时长（约20px/秒的阅读速度，单个来回3~15秒）
+        tab.style.setProperty('--tab-scroll-x', -overflow + 'px');
+        var duration = Math.min(15, Math.max(3, overflow / 20 + 2));
+        tab.style.setProperty('--tab-scroll-duration', duration + 's');
+        tab.classList.add('is-scrolling');
+    });
+
+    tab.addEventListener('mouseleave', function() {
+        // 移除后动画立即复位，恢复居中+省略号
+        tab.classList.remove('is-scrolling');
+    });
+}
+
 function switchVideo(container, index) {
-    // 启动NProgress加载动画
-    if (typeof NProgress !== 'undefined') {
-        NProgress.start();
-    }
-    
-    // 获取视频URL列表
-    var urlsInput = container.querySelector('.video-urls');
+    vcNProgress('start');
+
+    var urls = parseVideoList(container.querySelector('.video-urls'));
     var titlesInput = container.querySelector('.video-titles');
-    
-    if (!urlsInput || !titlesInput) {
-        if (typeof NProgress !== 'undefined') {
-            NProgress.done();
-        }
-        return;
-    }
-    
-    // 解码URL列表（处理可能存在的编码）
-    var urlsStr = decodeURIComponent(urlsInput.value);
-    var urls = urlsStr.split(',');
-    
-    // 解码标题列表
-    var titlesStr = decodeURIComponent(titlesInput.value);
-    var titles = titlesStr.split('|');
-    
-    // 获取所有标签
+    var titles = titlesInput ? decodeHtmlEntities(titlesInput.value).split('\n').map(function(t) { return t.trim(); }) : [];
+
     var tabs = container.querySelectorAll('.video-tab');
-    
-    // 验证索引是否有效
     if (index < 0 || index >= urls.length) {
-        if (typeof NProgress !== 'undefined') {
-            NProgress.done();
-        }
+        vcNProgress('done');
         return;
     }
-    
-    // 更新标签激活状态
-    for (var i = 0; i < tabs.length; i++) {
-        if (i === index) {
-            tabs[i].classList.add('active');
-        } else {
-            tabs[i].classList.remove('active');
-        }
+
+    tabs.forEach(function(tab, i) {
+        tab.classList.toggle('active', i === index);
+    });
+
+    // 浏览器标签标题：分集标题 + 原始页面标题
+    var currentTitle = titles[index] || ('第' + (index + 1) + '集');
+    if (!container.originalTitle) {
+        container.originalTitle = document.title;
     }
-    
-    // 获取当前选中的URL
-    var currentUrl = urls[index].trim();
-    
-    // 获取解析器URL（已在PHP端根据视频类型设置，直接使用即可）
+    document.title = currentTitle + ' - ' + container.originalTitle;
+
     var parserUrlInput = container.querySelector('.video-parser-url');
-    var parserUrl = parserUrlInput ? parserUrlInput.value : (window.shortCodeIframeParserUrl || '');
-    
-    // 检查是否使用解析地址
     var useParserInput = container.querySelector('.video-use-parser');
+    var parserUrl = parserUrlInput ? parserUrlInput.value : '';
     var useParser = useParserInput ? (useParserInput.value === 'true') : true;
-    
-    // 检查容器类型，使用对应的切换方法
-    var containerType = container.getAttribute('data-type');
-    if (containerType === 'play') {
-        // 检查是否使用iframe方式
-        var iframeElement = container.querySelector('.artplayer-iframe');
-        if (iframeElement) {
-            // 使用iframe方式切换视频
-            switchIframeVideo(container, index, urls, parserUrl, useParser);
-        } else {
-            // 使用ArtPlayer方式切换视频
-            switchPlayVideo(container, index, urls, parserUrl, useParser);
-        }
+
+    if (container.querySelector('.artplayer-iframe')) {
+        switchIframeVideo(container, index, urls, parserUrl, useParser);
+    } else {
+        switchPlayVideo(container, index, urls, parserUrl, useParser);
     }
-    
-    // 更新浏览器标签标题
-    updateBrowserTitle(index, titles, container);
 }
 
-/**
- * 更新浏览器标签标题
- * @param {number} index 视频索引
- * @param {Array} titles 视频标题列表
- * @param {HTMLElement} container 视频容器元素
- */
-function updateBrowserTitle(index, titles, container) {
-    // 获取当前分集的标题
-    var currentTitle = titles[index] ? titles[index].trim() : ('第' + (index + 1) + '集');
-    
-    // 获取页面原始标题（如果没有保存过，则从document.title获取）
-    var originalTitle = container.originalTitle || document.title;
-    container.originalTitle = originalTitle;
-    
-    // 构建新标题：分集标题 + 原始页面标题
-    var newTitle = currentTitle + ' - ' + originalTitle;
-    
-    // 更新浏览器标题
-    document.title = newTitle;
-}
-
-/**
- * 切换Iframe视频
- * @param {HTMLElement} container 视频容器元素
- * @param {number} index 视频索引
- * @param {Array} urls 视频URL列表
- * @param {string} parserUrl 解析器URL
- * @param {boolean} useParser 是否使用解析器
- */
 function switchIframeVideo(container, index, urls, parserUrl, useParser) {
     var iframeElement = container.querySelector('.artplayer-iframe');
     var videoUrl = urls[index];
-    
     if (!iframeElement || !videoUrl) {
-        if (typeof NProgress !== 'undefined') {
-            NProgress.done();
-        }
+        vcNProgress('done');
         return;
     }
-    
-    // 确保使用正确的解析地址
-    var finalUrl;
-    if (useParser && parserUrl) {
-        // 使用解析地址，直接拼接
-        finalUrl = parserUrl + encodeURIComponent(videoUrl);
-    } else {
-        // 直接使用原始地址
-        finalUrl = videoUrl;
+
+    var finalUrl = (useParser && parserUrl) ? parserUrl + encodeURIComponent(videoUrl) : videoUrl;
+
+    // 防抖：快速连续切换只加载最后点击的分集，避免多个重型解析页同时加载
+    if (container.__iframeSwitchTimer) {
+        clearTimeout(container.__iframeSwitchTimer);
     }
-    
-    // 监听iframe加载完成事件
-    iframeElement.onload = function() {
-        if (typeof NProgress !== 'undefined') {
-            NProgress.done();
+    container.__iframeSwitchTimer = setTimeout(function() {
+        // 关键：销毁旧 iframe 并重建而非改 src——改 src 时旧页面内存回收是异步的，
+        // 快速切换多集内存叠加会崩溃；销毁元素可立即触发旧文档卸载
+        var newFrame = iframeElement.cloneNode(false);
+        newFrame.onload = function() { vcNProgress('done'); };
+        newFrame.src = finalUrl;
+        if (iframeElement.parentNode) {
+            iframeElement.parentNode.replaceChild(newFrame, iframeElement);
         }
-    };
-    
-    // 更新iframe的src属性
-    iframeElement.src = finalUrl;
-    
-    // 更新当前视频索引
+    }, 250);
+
     container.currentVideoIndex = index;
 }
 
-/**
- * 获取解析后的视频URL（异步版本）
- * @param {string} originalUrl - 原始视频URL
- * @param {string} parserUrl - 解析地址前缀
- * @param {boolean} useParser - 是否使用解析地址
- * @returns {Promise<string>} 解析后的视频URL
- */
-async function getParsedVideoUrlAsync(originalUrl, parserUrl, useParser) {
-    if (useParser && parserUrl) {
-        // 使用解析地址，直接拼接
-        return parserUrl + encodeURIComponent(originalUrl);
-    }
-    // 直接使用原始地址
-    return originalUrl;
-}
-
-/**
- * 切换Play视频（ArtPlayer）
- * @param {HTMLElement} container 视频容器元素
- * @param {number} index 视频索引
- * @param {Array} urls 视频URL列表
- * @param {string} parserUrl 解析器URL
- * @param {boolean} useParser 是否使用解析器
- */
 function switchPlayVideo(container, index, urls, parserUrl, useParser) {
     var artPlayer = container.artPlayer;
     var videoUrl = urls[index];
-    
     if (!artPlayer || !videoUrl) {
-        if (typeof NProgress !== 'undefined') {
-            NProgress.done();
-        }
+        vcNProgress('done');
         return;
     }
-    
-    // 获取解析后的视频URL
+
+    // 切换前销毁旧 hls/flv 解码器，避免新旧实例抢占同一 <video>（表现为"切换仍播第一集"）
+    destroyArtPlayerMediaInstances(artPlayer);
+
     getParsedVideoUrlAsync(videoUrl, parserUrl, useParser)
         .then(function(finalUrl) {
-            // 使用异步方法智能检测视频类型（通过HEAD请求获取Content-Type）
             return getVideoTypeAsync(finalUrl).then(function(videoType) {
-                return { url: finalUrl, type: videoType };
-            });
-        })
-        .then(function(result) {
-            var finalUrl = result.url;
-            var videoType = result.type;
-            
-            // 切换视频
-            artPlayer.switchUrl(finalUrl, videoType);
-            artPlayer.play();
-            
-            // 完成NProgress加载动画
-            if (typeof NProgress !== 'undefined') {
-                NProgress.done();
-            }
-            
-            // 禁用弹幕功能，移除加载弹幕数据的逻辑
-            
-            // 更新当前视频索引
-            container.currentVideoIndex = index;
-            
-            // 更新下一集按钮显示状态
-            setTimeout(function() {
-                var nextButton = container.querySelector('.art-icon-next');
-                if (nextButton) {
-                    var buttonContainer = nextButton.parentElement;
-                    if (index >= urls.length - 1) {
-                        // 当前是最后一集，隐藏下一集按钮及其容器
-                        nextButton.style.display = 'none';
-                        if (buttonContainer) {
-                            buttonContainer.style.display = 'none';
-                        }
-                    } else {
-                        // 当前不是最后一集，显示下一集按钮及其容器
-                        nextButton.style.display = 'flex';
-                        if (buttonContainer) {
-                            buttonContainer.style.display = 'flex';
-                        }
+                artPlayer.switchUrl(finalUrl, videoType);
+                artPlayer.play();
+                vcNProgress('done');
+                container.currentVideoIndex = index;
+
+                // 最后一集时隐藏「下一集」按钮及其容器
+                setTimeout(function() {
+                    var nextButton = container.querySelector('.art-icon-next');
+                    if (!nextButton) return;
+                    var last = index >= urls.length - 1;
+                    nextButton.style.display = last ? 'none' : 'flex';
+                    if (nextButton.parentElement) {
+                        nextButton.parentElement.style.display = last ? 'none' : 'flex';
                     }
-                }
-            }, 100);
+                }, 100);
+            });
         })
         .catch(function(error) {
             console.error('Error getting parsed video URL:', error);
-            if (typeof NProgress !== 'undefined') {
-                NProgress.done();
-            }
+            vcNProgress('done');
         });
 }
 
-/**
- * 初始化ArtPlayer播放器
- * @param {HTMLElement} container - 视频播放器容器
- */
+// 销毁 ArtPlayer 挂载的 hls/flv 实例并解除与 <video> 的绑定，让新源干净接管
+function destroyArtPlayerMediaInstances(artPlayer) {
+    if (!artPlayer) return;
+    if (artPlayer.hls) {
+        vcSafeCall(artPlayer.hls, 'stopLoad');
+        vcSafeCall(artPlayer.hls, 'detachMedia');
+        vcSafeCall(artPlayer.hls, 'destroy');
+        delete artPlayer.hls;
+    }
+    if (artPlayer.flvPlayer) {
+        vcSafeCall(artPlayer.flvPlayer, 'unload');
+        vcSafeCall(artPlayer.flvPlayer, 'detachMediaElement');
+        vcSafeCall(artPlayer.flvPlayer, 'destroy');
+        delete artPlayer.flvPlayer;
+    }
+    var videoEl = artPlayer.template && artPlayer.template.$video;
+    if (videoEl) {
+        vcSafeCall(videoEl, 'pause');
+        try { videoEl.removeAttribute('src'); } catch (e) { /* ignore */ }
+        vcSafeCall(videoEl, 'load');
+    }
+}
+
+// 播放器宽度小于 438px 时隐藏数字时间（当前时间/总时长）
+function updateArtTimeVisibility(art) {
+    if (!art || !art.template || !art.template.$player) {
+        return;
+    }
+    var w = (typeof art.width === 'number' && art.width > 0)
+        ? art.width
+        : (art.template.$player.clientWidth || 0);
+    art.template.$player.classList.toggle('vc-hide-time', w > 0 && w < 438);
+}
+
 function initializeArtPlayer(container) {
     var id = container.id;
     var artPlayerId = 'artplayer-' + id;
     var artPlayerContainer = document.getElementById(artPlayerId);
-    
+
     if (!artPlayerContainer) {
         console.error('ArtPlayer容器未找到: ' + artPlayerId);
         return;
     }
-    
-    // 检查容器是否已经有ArtPlayer实例，如果有则不再创建
     if (container.artPlayer) {
         return;
     }
-    
-    // 获取视频数据
+
     var videoUrlsInput = container.querySelector('.video-urls');
-    var videoTitlesInput = container.querySelector('.video-titles');
-    var parserUrlInput = container.querySelector('.video-parser-url');
-    var useParserInput = container.querySelector('.video-use-parser');
-    
     if (!videoUrlsInput) {
         console.error('视频URL数据未找到: ' + id);
         return;
     }
-    
-    var videoUrlsStr = decodeURIComponent(videoUrlsInput.value);
-    var videoUrls = videoUrlsStr.split(',').filter(function(url) { return url.trim() !== ''; });
-    
-    var videoTitlesStr = videoTitlesInput ? decodeURIComponent(videoTitlesInput.value) : '';
-    var videoTitles = videoTitlesStr.split('|');
-    
-    // 解析地址已在PHP端根据视频类型设置，直接使用即可
-    var parserUrl = parserUrlInput ? parserUrlInput.value : (window.shortCodeIframeParserUrl || '');
-    var useParser = useParserInput ? (useParserInput.value === 'true') : true;
-    
+
+    var videoUrls = parseVideoList(videoUrlsInput);
     if (videoUrls.length === 0) {
         return;
     }
-    
-    // 获取第一个视频URL
+
+    var parserUrlInput = container.querySelector('.video-parser-url');
+    var useParserInput = container.querySelector('.video-use-parser');
+    var parserUrl = parserUrlInput ? parserUrlInput.value : '';
+    var useParser = useParserInput ? (useParserInput.value === 'true') : true;
+
+    var isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+
     getParsedVideoUrlAsync(videoUrls[0], parserUrl, useParser)
         .then(function(firstVideoUrl) {
-            // 使用异步方法智能检测视频类型（通过HEAD请求获取Content-Type）
             return getVideoTypeAsync(firstVideoUrl).then(function(videoType) {
                 return { url: firstVideoUrl, type: videoType };
             });
         })
         .then(function(result) {
-            var firstVideoUrl = result.url;
-            var videoType = result.type;
-            
-            // 检测是否为移动端设备
-            var isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-            
-            // 初始化函数
-            function initPlayerWithDanmu() {
-                // 再次检查容器是否已经有ArtPlayer实例，因为可能在异步操作期间被其他调用创建
-                if (container.artPlayer) {
-                    console.log('ArtPlayer实例已存在，跳过初始化: ' + id);
-                    return;
-                }
-                
-                // 构建插件数组
-                var plugins = [];
-                
-                // 构建控件配置
-                var controlsConfig = [];
-                
-                // 如果视频数量大于1且当前不是最后一集，才添加下一集按钮
-                if (videoUrls.length > 1 && 0 < videoUrls.length - 1) {
-                    controlsConfig.push({
-                        position: 'left',
-                        index: 11, 
-                        html: '<i class="art-icon art-icon-next hint--rounded hint--top" aria-label="下一集" style="display: flex;"><svg width="22" height="22" viewBox="0 0 22 22" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z" fill="currentColor"></path></svg></i>',
-                        click: function() {
-                            var currentIndex = container.currentVideoIndex || 0;
-                            var nextIndex = currentIndex + 1;
-                            if (nextIndex < container.videoUrls.length) {
-                                switchVideo(container, nextIndex);
-                            }
-                        }
-                    });
-                }
-                
-                // 初始化ArtPlayer
-                var art = new Artplayer({
-                    container: '#' + artPlayerId, // 播放器容器元素
-                    url: firstVideoUrl, // 视频播放地址
-                    type: videoType, // 视频类型（使用自动检测的类型）
-                    autoplay: true, // 自动播放
-                    autoSize: false, // 禁用自动大小调整，强制铺满容器
-                    playbackRate: true, // 显示播放速度控制
-                    fastForward: true, // 移动端添加长按视频快进功能
-                    setting: true, // 显示设置菜单
-                    pip: !isMobile, // 画中画：移动端不显示
-                    fullscreen: true, // 启用视频全屏功能
-                    fullscreenWeb: !isMobile, // 网页全屏：移动端不显示
-                    playsInline: true, // 允许网页内播放（移动端）
-                    autoPlayback: true, // 自动回放（记忆播放）
-                    theme: '#23ade5', // 播放器主题颜色
-                    lang: navigator.language.toLowerCase(), // 根据浏览器自动设置语言
-                    mutex: true, // 互斥，阻止多个播放器同时播放
-                    controls: controlsConfig,
-                    customType: {
-                        m3u8: function (video, url, art) {
-                            if (window.Hls && Hls.isSupported()) {
-                                var hls = new Hls({
-                                    maxBufferLength: 300,
-                                    maxMaxBufferLength: 600,
-                                });
-                                hls.loadSource(url);
-                                hls.attachMedia(video);
-                                art.hls = hls;
-                            } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
-                                video.src = url;
-                            } else {
-                                console.error('当前浏览器不支持 HLS 播放');
-                            }
-                        },
-                        flv: function (video, url, art) {
-                            if (window.flvjs && flvjs.isSupported()) {
-                                var flvPlayer = flvjs.createPlayer({
-                                    type: 'flv',
-                                    url: url,
-                                    isLive: false,
-                                    enableWorker: true,
-                                });
-                                flvPlayer.attachMediaElement(video);
-                                flvPlayer.load();
-                                art.flvPlayer = flvPlayer;
-                            } else {
-                                console.error('当前浏览器不支持 FLV 播放');
-                            }
-                        },
-                        mp4: function (video, url) {
-                            video.src = url;
-                        }
-                    },
-                    destroy: function () {
-                        if (this.hls) {
-                            this.hls.destroy();
-                            delete this.hls;
-                        }
-                        if (this.flvPlayer) {
-                            this.flvPlayer.destroy();
-                            delete this.flvPlayer;
-                        }
-                    },
-                    plugins: plugins,
-                });
-                
-                // 将播放器实例存储在容器上，以便后续切换视频使用
-                container.artPlayer = art;
-                container.videoUrls = videoUrls;
-                container.videoTitles = videoTitles;
-                container.parserUrl = parserUrl;
-                container.useParser = useParser;
-                container.currentVideoIndex = 0;
+            if (container.artPlayer) {
+                return; // 异步期间已被并发创建
             }
-            
-            // 初始化播放器
-            initPlayerWithDanmu();
+
+            var controlsConfig = [];
+            if (videoUrls.length > 1) {
+                controlsConfig.push({
+                    position: 'left',
+                    index: 11,
+                    html: '<i class="art-icon art-icon-next hint--rounded hint--top" aria-label="下一集" style="display: flex;"><svg width="22" height="22" viewBox="0 0 22 22" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z" fill="currentColor"></path></svg></i>',
+                    click: function() {
+                        var nextIndex = (container.currentVideoIndex || 0) + 1;
+                        if (nextIndex < container.videoUrls.length) {
+                            switchVideo(container, nextIndex);
+                        }
+                    }
+                });
+            }
+
+            var art = new Artplayer({
+                container: '#' + artPlayerId,
+                url: result.url,
+                type: result.type,
+                autoplay: false, // 进入页面一律不自动播放，避免多播放器同时出声；由用户手动播放
+                autoSize: false,
+                playbackRate: true,
+                fastForward: true,
+                setting: true,
+                pip: !isMobile,
+                fullscreen: true,
+                fullscreenWeb: !isMobile,
+                playsInline: true,
+                autoPlayback: true,
+                theme: '#23ade5',
+                lang: navigator.language.toLowerCase(),
+                mutex: true,
+                controls: controlsConfig,
+                customType: {
+                    m3u8: function (video, url, art) {
+                        // 创建新 Hls 前销毁旧实例，避免两实例同时 attachMedia 到同一 video
+                        if (art.hls) {
+                            vcSafeCall(art.hls, 'stopLoad');
+                            vcSafeCall(art.hls, 'detachMedia');
+                            vcSafeCall(art.hls, 'destroy');
+                            delete art.hls;
+                        }
+                        if (window.Hls && Hls.isSupported()) {
+                            var hls = new Hls({
+                                maxBufferLength: 300,
+                                maxMaxBufferLength: 600,
+                            });
+                            hls.loadSource(url);
+                            hls.attachMedia(video);
+                            art.hls = hls;
+                        } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+                            video.src = url;
+                        } else {
+                            console.error('当前浏览器不支持 HLS 播放');
+                        }
+                    },
+                    flv: function (video, url, art) {
+                        if (art.flvPlayer) {
+                            vcSafeCall(art.flvPlayer, 'unload');
+                            vcSafeCall(art.flvPlayer, 'detachMediaElement');
+                            vcSafeCall(art.flvPlayer, 'destroy');
+                            delete art.flvPlayer;
+                        }
+                        if (window.flvjs && flvjs.isSupported()) {
+                            var flvPlayer = flvjs.createPlayer({
+                                type: 'flv',
+                                url: url,
+                                isLive: false,
+                                enableWorker: true,
+                            });
+                            flvPlayer.attachMediaElement(video);
+                            flvPlayer.load();
+                            art.flvPlayer = flvPlayer;
+                        } else {
+                            console.error('当前浏览器不支持 FLV 播放');
+                        }
+                    },
+                    mp4: function (video, url) {
+                        video.src = url;
+                    }
+                },
+                destroy: function () {
+                    destroyArtPlayerMediaInstances(this);
+                }
+            });
+
+            container.artPlayer = art;
+            registerVideoCollectorPlayer(container, art);
+            container.videoUrls = videoUrls;
+            container.currentVideoIndex = 0;
+
+            updateArtTimeVisibility(art);
+            art.on('resize', function() {
+                updateArtTimeVisibility(art);
+            });
         })
         .catch(function(error) {
             console.error('Error getting parsed video URL:', error);
         });
 }
 
-/**
- * 获取解析后的视频URL（异步版本）
- * @param {string} originalUrl - 原始视频URL
- * @param {string} parserUrl - 解析地址前缀
- * @param {boolean} useParser - 是否使用解析地址
- * @returns {Promise<string>} 解析后的视频URL
- */
 async function getParsedVideoUrlAsync(originalUrl, parserUrl, useParser) {
     if (useParser && parserUrl) {
-        // 使用解析地址，等待API响应
         try {
             const response = await fetch(parserUrl + encodeURIComponent(originalUrl));
             const data = await response.json();
-            // 返回JSON中的url键值
-            return data.url || originalUrl; // 如果没有url键，则返回原始URL
+            return data.url || originalUrl;
         } catch (error) {
             console.error('解析视频URL失败:', error);
-            return originalUrl; // 出错时返回原始URL
+            return originalUrl;
         }
     }
-    // 直接使用原始地址
     return originalUrl;
 }
 
-/**
- * 智能类型识别：基于 Content-Type 和 URL 后缀
- * @param {string} finalUrl - 视频URL
- * @param {string|null} contentType - Content-Type 响应头
- * @returns {string} 视频类型（m3u8、flv、mp4）
- */
-function detectVideoTypeByResponse(finalUrl, contentType) {
-    if (contentType) {
-        const lowerCT = contentType.toLowerCase();
-        if (lowerCT.includes('application/vnd.apple.mpegurl') ||
-            lowerCT.includes('application/x-mpegurl') ||
-            lowerCT.includes('application/mpegurl')) {
-            return 'm3u8';
-        }
-        if (lowerCT.includes('video/x-flv') || lowerCT.includes('flv')) {
-            return 'flv';
-        }
-        if (lowerCT.includes('video/mp4') || lowerCT.includes('video/mpeg')) {
-            return 'mp4';
+// 仅同源 URL 做 HEAD 探测；跨域探测必被 CORS 拦截（如 302 不带 ACAO）且
+// hls/flv 的 XHR 同样不可用，直接走 getVideoType → 原生 video.src (no-cors)
+async function getVideoTypeAsync(url) {
+    var sameOrigin = false;
+    try {
+        sameOrigin = new URL(url, window.location.href).origin === window.location.origin;
+    } catch (e) { /* URL 无法解析时按跨域处理 */ }
+    if (sameOrigin) {
+        try {
+            const response = await fetch(url, { method: 'HEAD', redirect: 'follow' });
+            const contentType = (response.headers.get('content-type') || '').toLowerCase();
+            if (contentType.indexOf('mpegurl') !== -1) {
+                return 'm3u8';
+            }
+            if (contentType.indexOf('flv') !== -1) {
+                return 'flv';
+            }
+            if (contentType.indexOf('video/mp4') !== -1 || contentType.indexOf('video/mpeg') !== -1) {
+                return 'mp4';
+            }
+            // Content-Type 不明确时按重定向后的最终 URL 后缀判断
+            url = response.url;
+        } catch (error) {
+            console.warn('HEAD请求获取Content-Type失败，使用URL后缀检测:', error);
         }
     }
-    const urlLower = finalUrl.toLowerCase();
+    return getVideoType(url);
+}
+
+function getVideoType(url) {
+    var urlLower = url.toLowerCase();
     if (urlLower.includes('.m3u8') || urlLower.includes('hls') || urlLower.includes('playlist')) {
         return 'm3u8';
-    }
-    if (urlLower.endsWith('.flv')) {
+    } else if (urlLower.endsWith('.flv')) {
         return 'flv';
-    }
-    return 'mp4';
-}
-
-/**
- * 获取视频类型（异步版本，带Content-Type检测）
- * @param {string} url - 视频URL
- * @returns {Promise<string>} 视频类型（m3u8、flv、mp4）
- */
-async function getVideoTypeAsync(url) {
-    try {
-        const response = await fetch(url, { method: 'HEAD', redirect: 'follow' });
-        const contentType = response.headers.get('content-type');
-        const finalUrl = response.url;
-        return detectVideoTypeByResponse(finalUrl, contentType);
-    } catch (error) {
-        console.warn('HEAD请求获取Content-Type失败，使用URL后缀检测:', error);
-        return getVideoType(url);
-    }
-}
-
-/**
- * 同步版本的获取解析后的视频URL（兼容旧代码）
- * @param {string} originalUrl - 原始视频URL
- * @param {string} parserUrl - 解析地址前缀
- * @param {boolean} useParser - 是否使用解析地址
- * @returns {string} 解析后的视频URL
- */
-function getParsedVideoUrl(originalUrl, parserUrl, useParser) {
-    // 对于同步调用，暂时直接返回拼接的URL，但理想情况下应该重构为异步调用
-    if (useParser && parserUrl) {
-        return parserUrl + encodeURIComponent(originalUrl);
-    }
-    // 直接使用原始地址
-    return originalUrl;
-}
-
-/**
- * 获取视频类型
- * @param {string} url - 视频URL
- * @returns {string} 视频类型（m3u8、flv、mp4或auto）
- */
-function getVideoType(url) {
-    // 检查是否包含m3u8相关参数或路径
-    if (url.toLowerCase().includes('.m3u8') || url.toLowerCase().includes('hls') || url.toLowerCase().includes('playlist')) {
-        return 'm3u8';
-    } else if (url.toLowerCase().endsWith('.flv')) {
-        return 'flv';
-    } else if (url.toLowerCase().endsWith('.mp4')) {
+    } else if (urlLower.endsWith('.mp4')) {
         return 'mp4';
     } else {
-        return 'm3u8'; // 默认使用m3u8处理，确保请求头设置生效
+        // 无扩展名 URL 多因 HEAD 探测失败（伴随 CORS 限制），hls/flv 的 XHR 同样不可用，
+        // 唯一可行路径是原生 video.src；误判 m3u8 必然加载失败
+        return 'mp4';
     }
 }
 
-/**
- * 扩展ArtPlayer，添加切换URL方法
- * 如果ArtPlayer实例没有switchUrl方法，则添加该方法
- */
-if (typeof Artplayer !== 'undefined') {
-    // 检查switchUrl方法是否存在，不存在则添加
-    if (typeof Artplayer.prototype.switchUrl === 'undefined') {
-        Artplayer.prototype.switchUrl = function(url, type) {
-            this.url = url;
-            this.type = type;
-            
-            // 重新加载视频
-            this.load();
-            
-            return this;
-        };
-    }
+// ArtPlayer 无 switchUrl 时补充（切换前销毁旧解码器再换源）
+if (typeof Artplayer !== 'undefined' && typeof Artplayer.prototype.switchUrl === 'undefined') {
+    Artplayer.prototype.switchUrl = function(url, type) {
+        destroyArtPlayerMediaInstances(this);
+        this.url = url;
+        this.type = type;
+        this.load();
+        return this;
+    };
 }
