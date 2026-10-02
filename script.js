@@ -329,7 +329,7 @@ function destroyArtPlayerMediaInstances(artPlayer) {
     }
 }
 
-// 播放器宽度小于 438px 时隐藏数字时间（当前时间/总时长）
+// 播放器宽度小于 400px 时隐藏数字时间（当前时间/总时长）
 function updateArtTimeVisibility(art) {
     if (!art || !art.template || !art.template.$player) {
         return;
@@ -337,7 +337,7 @@ function updateArtTimeVisibility(art) {
     var w = (typeof art.width === 'number' && art.width > 0)
         ? art.width
         : (art.template.$player.clientWidth || 0);
-    art.template.$player.classList.toggle('vc-hide-time', w > 0 && w < 438);
+    art.template.$player.classList.toggle('vc-hide-time', w > 0 && w < 400);
 }
 
 // 检测视频方向：竖屏时让容器按真实宽高比显示，避免上下大黑边；横屏时恢复 16:9
