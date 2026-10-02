@@ -340,6 +340,39 @@ function updateArtTimeVisibility(art) {
     art.template.$player.classList.toggle('vc-hide-time', w > 0 && w < 438);
 }
 
+// 检测视频方向：竖屏时让容器按真实宽高比显示，避免上下大黑边；横屏时恢复 16:9
+function applyVideoOrientation(container, videoEl) {
+    var wrapper = container.querySelector('.play-player-wrapper');
+    if (!wrapper) {
+        return;
+    }
+    var vw = videoEl.videoWidth;
+    var vh = videoEl.videoHeight;
+    if (!vw || !vh) {
+        return;
+    }
+    if (vh > vw) {
+        wrapper.style.setProperty('--vc-video-ratio', (vw / vh).toFixed(4));
+        wrapper.classList.add('vc-portrait');
+    } else {
+        wrapper.classList.remove('vc-portrait');
+    }
+    updateArtPortraitControls(container);
+}
+
+// 竖屏且窗口模式（非全屏/网页全屏）时隐藏音量与数字时间控件，全屏后恢复
+function updateArtPortraitControls(container) {
+    var art = container.artPlayer;
+    var wrapper = container.querySelector('.play-player-wrapper');
+    if (!art || !wrapper || !art.template || !art.template.$player) {
+        return;
+    }
+    var compact = wrapper.classList.contains('vc-portrait')
+        && !art.fullscreen
+        && !art.fullscreenWeb;
+    art.template.$player.classList.toggle('vc-portrait-compact', compact);
+}
+
 function initializeArtPlayer(container) {
     var id = container.id;
     var artPlayerId = 'artplayer-' + id;
@@ -476,6 +509,25 @@ function initializeArtPlayer(container) {
             updateArtTimeVisibility(art);
             art.on('resize', function() {
                 updateArtTimeVisibility(art);
+            });
+
+            // 竖屏视频自适应：按实际宽高比调整容器（切集换源后 loadedmetadata 会再次触发）
+            var videoEl = art.template && art.template.$video;
+            if (videoEl) {
+                if (videoEl.videoWidth && videoEl.videoHeight) {
+                    applyVideoOrientation(container, videoEl);
+                }
+                videoEl.addEventListener('loadedmetadata', function() {
+                    applyVideoOrientation(container, videoEl);
+                });
+            }
+
+            // 全屏状态变化时重新评估竖屏控件的显隐
+            art.on('fullscreen', function() {
+                updateArtPortraitControls(container);
+            });
+            art.on('fullscreenWeb', function() {
+                updateArtPortraitControls(container);
             });
         })
         .catch(function(error) {
