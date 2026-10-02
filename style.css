@@ -32,6 +32,12 @@
     border-radius: 8px;
 }
 
+/* 竖屏视频自适应：JS 检测到竖屏后切换为真实宽高比，高度最高约40vh */
+.play-player-wrapper.vc-portrait {
+    aspect-ratio: var(--vc-video-ratio, 0.5625);
+    max-width: calc(40vh * var(--vc-video-ratio, 0.5625));
+}
+
 /* ArtPlayer容器 */
 .artplayer {
     position: absolute;
@@ -208,6 +214,13 @@
 
 /* 播放器宽度小于438px时隐藏数字时间（当前时间/总时长） */
 .artplayer .vc-hide-time .art-control-time {
+    display: none !important;
+}
+
+/* 竖屏窗口模式（非全屏）隐藏音量、数字时间、设置控件；全屏/网页全屏自动恢复 */
+.artplayer .vc-portrait-compact:not(.art-fullscreen):not(.art-fullscreen-web) .art-control-volume,
+.artplayer .vc-portrait-compact:not(.art-fullscreen):not(.art-fullscreen-web) .art-control-time,
+.artplayer .vc-portrait-compact:not(.art-fullscreen):not(.art-fullscreen-web) .art-control-setting {
     display: none !important;
 }
 
