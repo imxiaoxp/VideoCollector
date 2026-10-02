@@ -212,7 +212,7 @@
     transform: scale(0.85) !important;
 }
 
-/* 播放器宽度小于438px时隐藏数字时间（当前时间/总时长） */
+/* 播放器宽度小于400px时隐藏数字时间（当前时间/总时长） */
 .artplayer .vc-hide-time .art-control-time {
     display: none !important;
 }
