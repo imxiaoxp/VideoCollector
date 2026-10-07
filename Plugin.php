@@ -15,9 +15,9 @@ if (!defined('__TYPECHO_ROOT_DIR__')) {
 /**
  * 视频采集 - 从JSON API采集视频并插入编辑器
  *
- * @package 视频采集
+ * @package 官方视频采集
  * @author xiao
- * @version 1.0.10
+ * @version 1.0.11
  * @link https://ma.us.ci
  */
 class Plugin implements PluginInterface
@@ -117,7 +117,7 @@ class Plugin implements PluginInterface
         $options = Helper::options()->plugin('VideoCollector');
         $parserUrl = $options->videoParserUrl ?? '';
         $iframeParserUrl = $options->iframeParserUrl ?? '';
-        $playMode = $options->playMode ?? 'iframe';
+        $playMode = $options->playMode ?? 'artplayer';
 
         $useParserUrl = substr($shortCodeType, 0, 1) !== '!'; // [!play] 不使用解析地址
 
@@ -358,7 +358,7 @@ class Plugin implements PluginInterface
                 'artplayer' => _t('ArtPlayer'),
                 'iframe' => _t('Iframe')
             ),
-            'iframe',
+            'artplayer',
             _t('视频播放方式'),
             _t('<p style="margin: 15px 0; padding: 10px; background: #f5c0c0ff; border: 1px solid #f59696ff; border-radius: 4px; color: #290404ff;">ArtPlayer模式是加载JSON中的URL键值进行播放（请确保解析地址返回的JSON中包含URL键值，且URL键值为视频地址）<br>Iframe模式是嵌入第三方播放器URL进行播放（请确保Iframe解析地址返回的URL是一个视频播放器页面）</p>')
         );
